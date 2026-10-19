@@ -112,7 +112,14 @@ You need:
 
 - a Google Cloud project with billing enabled
 - a **public** GitHub repository holding this code. Argo CD reads it without credentials; a private repo needs a deploy key added to Argo CD.
-- [Cloud Shell](https://shell.cloud.google.com), which already has `gcloud`, `terraform` and `kubectl`. A local machine with those tools works too.
+- [Cloud Shell](https://shell.cloud.google.com), which already has `gcloud` and `kubectl`, or a local machine with those tools. You also need Terraform 1.5 or newer. Cloud Shell doesn't include it, so install it into `~/bin`, which persists between sessions:
+
+  ```bash
+  mkdir -p ~/bin
+  curl -fsSLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.16.6/terraform_1.16.6_linux_amd64.zip
+  unzip -o /tmp/terraform.zip terraform -d ~/bin && export PATH="$HOME/bin:$PATH"
+  terraform version
+  ```
 
 ### 1. Push the code to GitHub
 
@@ -211,6 +218,7 @@ This is sized for a demo. For production I would add:
 
 ## Troubleshooting
 
+- **`bootstrap.sh` fails with "The billing account for the owning project is disabled"**: the project isn't linked to a billing account. Find yours with `gcloud billing accounts list`, then run `gcloud billing projects link <project-id> --billing-account=<ACCOUNT_ID>`.
 - **`apply` fails with "API not enabled" or "has not been used in project"**: newly enabled APIs can take a minute to become usable. Run `terraform apply` again.
 - **Re-applying after a destroy fails on the workload identity pool**: deleted pools are kept for 30 days. Restore it with `gcloud iam workload-identity-pools undelete github --location=global`, then apply again.
 - **The `root` Application shows "repository not found"**: the repository must be public, and `github_repository` must match its exact owner/name.
