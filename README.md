@@ -191,11 +191,18 @@ Open https://localhost:8080 and log in as `admin`. The certificate is self-signe
 
 Delete the app through Argo CD first, so Kubernetes removes the load balancer it created. Load balancers left behind keep the network in use, and `terraform destroy` would fail on it.
 
+Run from the repository root:
+
 ```bash
 kubectl -n argocd delete application root        # stop Argo CD recreating hello-api
 kubectl -n argocd delete application hello-api   # waits while the namespace and load balancer are removed
-cd terraform && terraform destroy
-gcloud storage rm -r gs://<project-id>-tfstate   # optional: the state bucket
+(cd terraform && terraform destroy)
+```
+
+Once `terraform destroy` reports `Destroy complete!`, you can also delete the state bucket. Don't delete it earlier: Terraform needs the state to know what to destroy.
+
+```bash
+gcloud storage rm -r "gs://$(gcloud config get-value project)-tfstate"
 ```
 
 ## Cost
