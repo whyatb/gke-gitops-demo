@@ -3,6 +3,8 @@
 resource "google_service_account" "gke_nodes" {
   account_id   = "gke-nodes"
   display_name = "GKE nodes"
+
+  depends_on = [google_project_service.enabled]
 }
 
 resource "google_project_iam_member" "gke_nodes" {

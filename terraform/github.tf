@@ -35,6 +35,8 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 resource "google_service_account" "github_ci" {
   account_id   = "github-ci"
   display_name = "GitHub Actions CI"
+
+  depends_on = [google_project_service.enabled]
 }
 
 resource "google_service_account_iam_member" "github_ci_wif" {
