@@ -23,4 +23,4 @@ configMapGenerator:
 images:
 - name: hello-api
   newName: us-central1-docker.pkg.dev/acdtkgha/apps/hello-api
-  newTag: initial
+  newTag: 792ad3422f708752d2e4c3ed9a0a35c1c4f835e9
