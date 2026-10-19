@@ -1,0 +1,2 @@
+project_id        = "your-gcp-project-id"
+github_repository = "your-github-user/gke-gitops-demo"

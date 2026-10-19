@@ -1,0 +1,19 @@
+# An AppProject is Argo CD's permission boundary. This one may deploy only
+# from this repository and only into the hello-api namespace, so a bad
+# manifest can't touch anything else in the cluster.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hello-api
+  namespace: argocd
+spec:
+  description: hello-api service
+  sourceRepos:
+    - https://github.com/whyatb/gke-gitops-demo.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hello-api
+  # The only cluster-scoped resource the app may create is its own namespace.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace

@@ -1,0 +1,14 @@
+# Values for the argo-cd Helm chart. The chart defaults are sensible; this only
+# turns off what the demo doesn't use.
+
+dex:
+  enabled: false # no SSO; log in with the generated admin password
+
+notifications:
+  enabled: false
+
+configs:
+  cm:
+    # Poll Git every 60s (plus up to 60s of jitter) instead of every 120s, so
+    # deployments show up sooner. A GitHub webhook would make this instant.
+    timeout.reconciliation: 60s

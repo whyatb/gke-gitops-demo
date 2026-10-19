@@ -1,0 +1,57 @@
+# Static checks for the infrastructure code. These need no cloud credentials:
+# Terraform is applied by a person (see README), and Kubernetes changes are
+# applied by Argo CD.
+name: infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "k8s/**"
+      - "argocd/**"
+      - ".github/workflows/infra.yaml"
+  pull_request:
+    paths:
+      - "terraform/**"
+      - "k8s/**"
+      - "argocd/**"
+      - ".github/workflows/infra.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.16"
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  manifests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Render k8s/ with Kustomize
+        run: kustomize build k8s > rendered.yaml
+      # Check every resource against the Kubernetes API schemas, and the Argo
+      # CD resources against community-maintained CRD schemas.
+      - name: Validate schemas
+        run: |
+          go run github.com/yannh/kubeconform/cmd/kubeconform@v0.8.0 \
+            -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered.yaml argocd/

@@ -1,0 +1,17 @@
+# A LoadBalancer Service gives the app a public IP through a Google Cloud
+# network load balancer. Fine for a demo; production would use an Ingress or
+# Gateway with TLS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-api
+  labels:
+    app.kubernetes.io/name: hello-api
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: hello-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

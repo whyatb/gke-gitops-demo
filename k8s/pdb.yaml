@@ -1,0 +1,11 @@
+# Keep at least one pod running during voluntary disruptions such as GKE node
+# upgrades.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: hello-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello-api

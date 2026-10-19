@@ -1,0 +1,17 @@
+# Allow inbound traffic to the HTTP port only, and block all outbound traffic:
+# the service has no dependencies, so it has no reason to open connections.
+# Enforced by GKE Dataplane V2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hello-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hello-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: http

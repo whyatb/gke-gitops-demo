@@ -1,0 +1,121 @@
+# Continuous integration for hello-api.
+#
+#   pull request -> test
+#   push to main -> test -> build & push image -> commit new image tag to k8s/
+#
+# This workflow never talks to the cluster. Argo CD notices the commit to k8s/
+# and rolls out the new image.
+name: app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yaml"
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/app.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Runs on main queue up instead of overlapping, so two releases can't race to
+# update the manifest. Superseded pull request runs are cancelled.
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: app/go.mod
+          cache: false # no third-party dependencies to cache
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  build:
+    needs: test
+    # Skipped until the repository variables from `terraform output` are set.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.IMAGE_REPOSITORY != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write # lets the job request a GitHub OIDC token for Google Cloud
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: image
+        env:
+          IMAGE_REPOSITORY: ${{ vars.IMAGE_REPOSITORY }}
+        run: echo "ref=${IMAGE_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      # Exchange the GitHub OIDC token for a short-lived Google access token.
+      # No service account key is stored anywhere.
+      - id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Log in to Artifact Registry
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: echo "$TOKEN" | docker login -u oauth2accesstoken --password-stdin "https://${IMAGE%%/*}"
+
+      - name: Build and push
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          # Tags are immutable in Artifact Registry. If this commit was already
+          # built (for example, a re-run), reuse that image.
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "$IMAGE already exists; skipping build."
+            exit 0
+          fi
+          docker build --build-arg VERSION="$GITHUB_SHA" -t "$IMAGE" app
+          docker push "$IMAGE"
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # to commit the new image tag
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Point k8s/ at the new image
+        working-directory: k8s
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: kustomize edit set image "hello-api=${IMAGE}"
+
+      # Commits made with the workflow's GITHUB_TOKEN don't trigger other
+      # workflows, so this can't loop.
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "k8s/ already points at this image."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "release: hello-api ${GITHUB_SHA::7}"
+          # main may have moved since checkout; replay this commit on top.
+          git pull --rebase origin main
+          git push origin HEAD:main
