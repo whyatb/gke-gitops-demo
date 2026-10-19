@@ -43,6 +43,7 @@ k8s/                    What Argo CD deploys: Kustomize manifests for hello-api
 argocd/                 Argo CD's own config: an AppProject and the hello-api Application
 terraform/              GCP infrastructure and the Argo CD install
 scripts/bootstrap.sh    One-time setup: enables base APIs, creates the Terraform state bucket
+RUNBOOK.md              Step-by-step setup, verification and teardown
 .github/workflows/
   app.yaml              Test -> build -> push -> release (commit new image tag)
   infra.yaml            terraform fmt/validate, Kubernetes schema validation
@@ -106,77 +107,14 @@ The `infra` workflow runs `terraform fmt` and `terraform validate` and checks ev
 
 State is stored in a versioned GCS bucket, and `.terraform.lock.hcl` is committed so everyone uses identical provider builds.
 
-## Setup
+## Running it
 
-You need:
+[RUNBOOK.md](RUNBOOK.md) has the full procedure: copy-paste commands for Cloud Shell, the output to expect at each step, and fixes for common problems. In short:
 
-- a Google Cloud project with billing enabled
-- a **public** GitHub repository holding this code. Argo CD reads it without credentials; a private repo needs a deploy key added to Argo CD.
-- [Cloud Shell](https://shell.cloud.google.com), which already has `gcloud` and `kubectl`, or a local machine with those tools. You also need Terraform 1.5 or newer. Cloud Shell doesn't include it, so install it into `~/bin`, which persists between sessions:
-
-  ```bash
-  mkdir -p ~/bin
-  curl -fsSLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.16.6/terraform_1.16.6_linux_amd64.zip
-  unzip -o /tmp/terraform.zip terraform -d ~/bin && export PATH="$HOME/bin:$PATH"
-  terraform version
-  ```
-
-### 1. Push the code to GitHub
-
-Push this repository to `main`. The `app` workflow runs the tests and skips the build, because the cloud side doesn't exist yet.
-
-### 2. Create the infrastructure
-
-In Cloud Shell:
-
-```bash
-git clone https://github.com/<you>/<repo>.git && cd <repo>
-gcloud config set project <project-id>
-
-scripts/bootstrap.sh <project-id>
-
-cd terraform
-cp terraform.tfvars.example terraform.tfvars   # then edit both values
-terraform init -backend-config="bucket=<project-id>-tfstate"
-terraform apply
-```
-
-`apply` takes about 10–15 minutes, mostly creating the cluster.
-
-### 3. Connect GitHub Actions to Google Cloud
-
-```bash
-terraform output github_actions_variables
-```
-
-Add each value as a repository **variable** under *Settings → Secrets and variables → Actions → Variables*. None of them are secret. With the GitHub CLI:
-
-```bash
-terraform output -json github_actions_variables \
-  | jq -r 'to_entries[] | "\(.key) \(.value)"' \
-  | while read -r k v; do gh variable set "$k" --body "$v" --repo <you>/<repo>; done
-```
-
-### 4. Deploy
-
-Run the `app` workflow: *Actions → app → Run workflow*. It builds the image, pushes it, and commits the new tag to `k8s/`. Within a minute or two Argo CD rolls it out.
-
-```bash
-$(terraform output -raw get_credentials_command)
-kubectl -n hello-api get pods,svc
-curl http://<EXTERNAL-IP>/
-```
-
-The load balancer IP can take a minute or two to appear.
-
-### Argo CD UI
-
-```bash
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
-kubectl -n argocd port-forward svc/argocd-server 8080:443
-```
-
-Open https://localhost:8080 and log in as `admin`. The certificate is self-signed. In Cloud Shell, use *Web Preview* on port 8080.
+1. Push this repository to a **public** GitHub repository. Argo CD reads it without credentials.
+2. In Cloud Shell, run `scripts/bootstrap.sh` to create the Terraform state bucket, then `terraform apply` (about 15 minutes).
+3. Copy the three values from `terraform output github_actions_variables` into the repository's Actions variables.
+4. Run the `app` workflow. A few minutes later the service answers on its load balancer IP.
 
 ## Things to try
 
@@ -189,21 +127,7 @@ Open https://localhost:8080 and log in as `admin`. The certificate is self-signe
 
 ## Teardown
 
-Delete the app through Argo CD first, so Kubernetes removes the load balancer it created. Load balancers left behind keep the network in use, and `terraform destroy` would fail on it.
-
-Run from the repository root:
-
-```bash
-kubectl -n argocd delete application root        # stop Argo CD recreating hello-api
-kubectl -n argocd delete application hello-api   # waits while the namespace and load balancer are removed
-(cd terraform && terraform destroy)
-```
-
-Once `terraform destroy` reports `Destroy complete!`, you can also delete the state bucket. Don't delete it earlier: Terraform needs the state to know what to destroy.
-
-```bash
-gcloud storage rm -r "gs://$(gcloud config get-value project)-tfstate"
-```
+Delete the Argo CD applications first, so Kubernetes removes the load balancer it created, then run `terraform destroy`. A leftover load balancer keeps the network in use and makes `destroy` fail. [RUNBOOK.md → Teardown](RUNBOOK.md#teardown) has the exact steps and checks.
 
 ## Cost
 
@@ -222,12 +146,3 @@ This is sized for a demo. For production I would add:
 - **Secrets**: Secret Manager with Workload Identity (already turned on in the cluster) through the External Secrets Operator.
 - **Cluster**: a regional control plane, restricted control plane access, and Google Cloud Managed Service for Prometheus with alerts.
 - **Scaling**: a HorizontalPodAutoscaler for the service.
-
-## Troubleshooting
-
-- **`bootstrap.sh` fails with "The billing account for the owning project is disabled"**: the project isn't linked to a billing account. Find yours with `gcloud billing accounts list`, then run `gcloud billing projects link <project-id> --billing-account=<ACCOUNT_ID>`.
-- **`apply` fails with "API not enabled" or "has not been used in project"**: newly enabled APIs can take a minute to become usable. Run `terraform apply` again.
-- **Re-applying after a destroy fails on the workload identity pool**: deleted pools are kept for 30 days. Restore it with `gcloud iam workload-identity-pools undelete github --location=global`, then apply again.
-- **The `root` Application shows "repository not found"**: the repository must be public, and `github_repository` must match its exact owner/name.
-- **Pods in `ImagePullBackOff` with tag `initial`**: the `app` workflow hasn't released an image yet. Run it (step 4).
-- **The workflow fails at "Log in to Artifact Registry"**: check the three repository variables, and that `github_repository` matches the repository name exactly, including capitalization.

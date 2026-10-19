@@ -6,7 +6,7 @@
 # service account key is ever created or stored in GitHub.
 
 resource "google_iam_workload_identity_pool" "github" {
-  workload_identity_pool_id = "github"
+  workload_identity_pool_id = var.workload_identity_pool_id
   display_name              = "GitHub Actions"
 
   depends_on = [google_project_service.enabled]

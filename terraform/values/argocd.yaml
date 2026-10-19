@@ -1,5 +1,5 @@
 # Values for the argo-cd Helm chart. The chart defaults are sensible; this only
-# turns off what the demo doesn't use.
+# turns off what the demo doesn't use and adjusts how the UI is reached.
 
 dex:
   enabled: false # no SSO; log in with the generated admin password
@@ -8,6 +8,12 @@ notifications:
   enabled: false
 
 configs:
+  params:
+    # Serve the UI over plain HTTP inside the cluster, so Cloud Shell's Web
+    # Preview (which speaks HTTP) can open it. The argocd-server Service is
+    # cluster-internal and only reached through `kubectl port-forward`, which
+    # tunnels over the Kubernetes API's TLS connection.
+    server.insecure: true
   cm:
     # Poll Git every 60s (plus up to 60s of jitter) instead of every 120s, so
     # deployments show up sooner. A GitHub webhook would make this instant.

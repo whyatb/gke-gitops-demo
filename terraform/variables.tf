@@ -13,6 +13,17 @@ variable "github_repository" {
   }
 }
 
+variable "workload_identity_pool_id" {
+  description = "ID of the workload identity pool GitHub Actions signs in through. Google keeps a deleted pool for 30 days and won't reuse its ID, so set a new one (for example github-2) when rebuilding within 30 days of a teardown."
+  type        = string
+  default     = "github"
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]{4,32}$", var.workload_identity_pool_id))
+    error_message = "Use 4-32 lowercase letters, digits or hyphens."
+  }
+}
+
 variable "region" {
   description = "Region for the network and the Artifact Registry repository."
   type        = string
