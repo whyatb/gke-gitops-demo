@@ -8,6 +8,8 @@ A small web service deployed to Google Kubernetes Engine through a fully automat
 
 A `git push` to `main` ends with the new version serving traffic, and nothing in the pipeline holds credentials to the cluster.
 
+For a one-page summary of why each tool is in the stack, see [docs/why-this-stack.pdf](docs/why-this-stack.pdf). To run it yourself, follow [RUNBOOK.md](RUNBOOK.md).
+
 ## How it works
 
 ```mermaid
@@ -44,6 +46,7 @@ argocd/                 Argo CD's own config: an AppProject and the hello-api Ap
 terraform/              GCP infrastructure and the Argo CD install
 scripts/bootstrap.sh    One-time setup: enables base APIs, creates the Terraform state bucket
 RUNBOOK.md              Step-by-step setup, verification and teardown
+docs/why-this-stack.pdf One-page rationale for each tool in the stack
 .github/workflows/
   app.yaml              Test -> build -> push -> release (commit new image tag)
   infra.yaml            terraform fmt/validate, Kubernetes schema validation
